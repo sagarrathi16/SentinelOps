@@ -1,0 +1,32 @@
+{
+  "incident_seed": {
+    "incident_id": "INC-CHECKOUT-482",
+    "room_id": "inc-checkout-482",
+    "service": "checkout-service-api",
+    "trigger_alert": "CRITICAL: HTTP 500 error rate spiked to 14.8% on /checkout endpoint",
+    "timestamp": "2026-11-04T02:14:05Z",
+    "raw_logs": [
+      "2026-11-04T02:14:01Z [ERROR] Failed to process transaction for customer alice@initech.corp (card: 4111-2222-3333-4444)",
+      "2026-11-04T02:14:02Z [ERROR] TypeError: 'NoneType' object is not subscriptable at PaymentProcessor.ts:142",
+      "2026-11-04T02:14:03Z [ERROR] Unhandled exception in /checkout handler for customer bob.builder@construct.io",
+      "2026-11-04T02:14:04Z [ERROR] Authorization bearer token expired: Bearer sk_live_demo_prod_99182347102"
+    ],
+    "commits": [
+      {
+        "sha": "8f9b2a",
+        "author": "@dev-alice",
+        "message": "Add expedited billing flag to checkout request",
+        "files_changed": ["PaymentProcessor.ts", "payment_processor.py"],
+        "timestamp": "2026-11-04T01:56:11Z"
+      },
+      {
+        "sha": "7c41e0",
+        "author": "@dev-bob",
+        "message": "Optimize redis session cache ttl",
+        "files_changed": ["cache.py"],
+        "timestamp": "2026-11-03T22:14:00Z"
+      }
+    ]
+  }
+}
+

@@ -1,0 +1,117 @@
+version: '3.8'
+
+networks:
+  sentinelops-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  mattermost-data:
+
+services:
+  # 1. Authoritative Persistence Store
+  postgres:
+    image: postgres:16-alpine
+    container_name: sentinelops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: switch
+      POSTGRES_PASSWORD: switch_secure_password_2026
+      POSTGRES_DB: switch_war_room
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - sentinelops-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U switch -d switch_war_room"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Switch Core Server & Callback Listener
+  switch:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: sentinelops-switch-core
+    restart: unless-stopped
+    command: ["uvicorn", "core.switch_server:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+      - "8081:8081"
+    environment:
+      - SWITCH_ENV=production
+      - DATABASE_URL=postgresql://switch:switch_secure_password_2026@postgres:5432/switch_war_room
+      - MATTERMOST_WEBHOOK_URL=http://mattermost:8065/hooks/rmh6yh47zty7ukxzm3xy9kw9ka
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sentinelops-net
+
+  # 3. Mattermost Team Edition (Zero-Tunneling ChatOps UI)
+  mattermost:
+    image: mattermost/mattermost-team-edition:latest
+    container_name: sentinelops-mattermost
+    restart: unless-stopped
+    ports:
+      - "8065:8065"
+    environment:
+      - MM_SQLSETTINGS_DRIVERNAME=postgres
+      - MM_SQLSETTINGS_DATASOURCE=postgres://switch:switch_secure_password_2026@postgres:5432/switch_war_room?sslmode=disable
+      - MM_SERVICESETTINGS_ALLOWEDUNTRUSTEDINTERNALCONNECTIONS=switch target-service
+      - MM_SERVICESETTINGS_ENABLEINTERACTIVETEST=true
+    volumes:
+      - mattermost-data:/mattermost/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sentinelops-net
+
+  # 4. Target Monitored Microservice (Injected Bug Commit #8f9b2a)
+  target-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.target
+    container_name: sentinelops-target-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    networks:
+      - sentinelops-net
+
+  # 5. SentinelOps Autonomous Agent Daemon (@triage-commander)
+  sentinelops-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: sentinelops-agent-daemon
+    restart: on-failure
+    environment:
+      - SWITCH_CORE_HOST=switch
+      - SWITCH_CORE_PORT=8000
+      - TARGET_SERVICE_URL=http://target-service:8080
+      - MATTERMOST_URL=http://mattermost:8065
+      - MATTERMOST_WEBHOOK_URL=http://mattermost:8065/hooks/rmh6yh47zty7ukxzm3xy9kw9ka
+      - SWITCH_TRUST_REQUIRE_GUARDRAILS=true
+    depends_on:
+      switch:
+        condition: service_healthy
+      target-service:
+        condition: service_started
+    networks:
+      - sentinelops-net
+
