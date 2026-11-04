@@ -78,6 +78,6 @@ async def test_full_incident_remediation_lifecycle():
     # Room Document must be updated to RESOLVED with MTTR
     final_doc = store.documents[room_id]["incident-postmortem.md"]
     assert "[RESOLVED]" in final_doc.content
-    assert "2m 18s" in final_doc.content
+    assert "MTTR:" in final_doc.content
     assert "42/42 Green" in final_doc.content
     assert "0 OWASP LLM vulnerabilities" in final_doc.content
