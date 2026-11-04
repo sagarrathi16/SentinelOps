@@ -121,10 +121,12 @@ class SwitchClient:
     # -------------------------------------------------------------
     async def listen_events(self, on_event_callback: Callable[[SwitchEvent], Any], backoff_delay: float = 1.0):
         """
-        Maintains persistent WebSocket connection to Switch Core with cursor replay.
+        Maintains persistent WebSocket connection to Switch Core with cursor replay and protocol compatibility.
         """
+        import uuid
         self._running = True
-        ws_url = f"{self.ws_base_url}/agents/{self.agent_id}/connection/ws?cursor={self.last_seq}"
+        conn_id = str(uuid.uuid4())
+        ws_url = f"{self.ws_base_url}/agents/{self.agent_id}/connection/ws?connection_id={conn_id}&cursor={self.last_seq}"
 
         while self._running:
             try:
@@ -146,7 +148,34 @@ class SwitchClient:
                         if not self._running:
                             break
                         data = json.loads(message)
-                        event = SwitchEvent(**data)
+
+                        # Handle native Switch protocol frames
+                        event_name = data.get("event") or data.get("type")
+                        if event_name == "connection_state":
+                            logger.info(f"Switch Core handshake confirmed: protocol={data.get('data', {}).get('protocol')}")
+                            continue
+                        elif event_name == "ping":
+                            await ws.send(json.dumps({"event": "pong"}))
+                            continue
+                        elif event_name == "refused":
+                            logger.warning(f"Switch Core connection refused: {data.get('data')}")
+                            break
+
+                        # Standardize to SwitchEvent
+                        if "payload" in data:
+                            event = SwitchEvent(**data)
+                        else:
+                            evt_data = data.get("data", {})
+                            event = SwitchEvent(
+                                type=event_name or "message",
+                                seq=data.get("seq") or data.get("id") or 0,
+                                room_id=data.get("room_id") or evt_data.get("room_id") or "inc-checkout-482",
+                                sender_id=data.get("sender_id") or evt_data.get("sender_id") or "switch-core",
+                                payload=SwitchMessagePayload(
+                                    content=evt_data.get("content") or str(evt_data) if isinstance(evt_data, dict) else str(evt_data)
+                                )
+                            )
+
                         if event.seq > self.last_seq:
                             self.last_seq = event.seq
 

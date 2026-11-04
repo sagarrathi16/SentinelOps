@@ -25,10 +25,13 @@ class TriageCommanderAgent:
         self,
         base_url: str = "http://localhost:8000",
         agent_id: str = "sentinelops-triage-commander",
+        api_key: Optional[str] = None,
         target_service_url: str = "http://localhost:8080",
         app: Optional[Any] = None,
     ):
-        self.client = SwitchClient(base_url=base_url, agent_id=agent_id, app=app)
+        import os
+        api_key = api_key or os.getenv("SWITCH_AGENT_API_KEY", "sk_live_switch_sentinelops_9921a8f")
+        self.client = SwitchClient(base_url=base_url, agent_id=agent_id, api_key=api_key, app=app)
         self.guard = SwitchTrustGuard()
         self.analyzer = GitBisectAnalyzer()
         self.remediator = Remediator(target_service_url=target_service_url)
@@ -281,13 +284,17 @@ class TriageCommanderAgent:
 
 if __name__ == "__main__":
     import os
+    from dotenv import load_dotenv
 
+    load_dotenv()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    host = os.getenv("SWITCH_CORE_HOST", "localhost")
-    port = os.getenv("SWITCH_CORE_PORT", "8000")
+    host = os.getenv("SWITCH_CORE_HOST", "127.0.0.1")
+    port = os.getenv("SWITCH_CORE_PORT", "61980")
+    agent_id = os.getenv("SWITCH_AGENT_ID", "a8fc5cbd-e854-482d-9f10-41143f7d220f")
+    api_key = os.getenv("SWITCH_AGENT_API_KEY", "s_TU2e4U2wMYCzgJoDdYR0ToEFo75kKRYCk0bSO0Aws")
     target_url = os.getenv("TARGET_SERVICE_URL", "http://localhost:8080")
     base_url = f"http://{host}:{port}"
 
-    logger.info(f"Connecting SentinelOps Agent to Switch Core at {base_url} (target: {target_url})")
-    agent_instance = TriageCommanderAgent(base_url=base_url, target_service_url=target_url)
+    logger.info(f"Connecting SentinelOps Agent '{agent_id}' to Switch Core at {base_url} (target: {target_url})")
+    agent_instance = TriageCommanderAgent(base_url=base_url, agent_id=agent_id, api_key=api_key, target_service_url=target_url)
     asyncio.run(agent_instance.start())
