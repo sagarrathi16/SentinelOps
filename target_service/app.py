@@ -77,7 +77,7 @@ def checkout(req: CheckoutRequest):
             f"Payment processing failed: {str(e)} | Stack: PaymentProcessor.ts:142 NullPointerException (customer email: {req.customer.email}, card: {req.card_number})"
         )
 
-        # Notify Switch Core if cooldown elapsed (simulating observability alert webhook)
+        # Notify Switch / SentinelOps if cooldown elapsed (simulating observability alert webhook)
         now = time.time()
         if now - last_alert_time > 8.0:
             last_alert_time = now
@@ -87,13 +87,28 @@ def checkout(req: CheckoutRequest):
                 alert_body = json.dumps({
                     "content": f"CRITICAL: HTTP 500 error rate spiked to 14.8% on /checkout (commit {processor.active_commit})"
                 }).encode("utf-8")
-                req_obj = urllib.request.Request(
-                    "http://switch:8000/inject/alert",
-                    data=alert_body,
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                )
-                urllib.request.urlopen(req_obj, timeout=1.5)
+                alert_urls = [
+                    "http://host.docker.internal:8000/inject/alert",
+                    "http://127.0.0.1:8000/inject/alert",
+                    "http://switch:8000/inject/alert"
+                ]
+                dispatched = False
+                for alert_url in alert_urls:
+                    try:
+                        req_obj = urllib.request.Request(
+                            alert_url,
+                            data=alert_body,
+                            headers={"Content-Type": "application/json"},
+                            method="POST"
+                        )
+                        urllib.request.urlopen(req_obj, timeout=1.5)
+                        logger.info(f"Alert successfully dispatched to {alert_url}")
+                        dispatched = True
+                        break
+                    except Exception:
+                        continue
+                if not dispatched:
+                    logger.warning("Could not reach any alert webhook endpoint")
             except Exception as alert_err:
                 logger.warning(f"Could not forward alert to Switch Core: {alert_err}")
 
